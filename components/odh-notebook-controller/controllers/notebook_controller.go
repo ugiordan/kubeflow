@@ -710,7 +710,6 @@ func (r *OpenshiftNotebookReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.ServiceAccount{}).
 		Owns(&corev1.Service{}).
 		Owns(&corev1.Secret{}).
-		Owns(&corev1.ConfigMap{}).
 		Owns(&netv1.NetworkPolicy{}).
 		Owns(&rbacv1.RoleBinding{}).
 
@@ -778,70 +777,6 @@ func (r *OpenshiftNotebookReconciler) SetupWithManager(mgr ctrl.Manager) error {
 							},
 						},
 					}
-				}
-
-				return []reconcile.Request{}
-			}),
-		).
-
-		// Watch for all the required ConfigMaps
-		// odh-trusted-ca-bundle, kube-root-ca.crt, workbench-trusted-ca-bundle
-		// and reconcile the workbench-trusted-ca-bundle ConfigMap,
-		Watches(&corev1.ConfigMap{},
-			handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, o client.Object) []reconcile.Request {
-				log := r.Log.WithValues("namespace", o.GetNamespace(), "name", o.GetName())
-
-				// If the ConfigMap name matches on of our interested ConfigMaps
-				// trigger a reconcile event for first notebook in the namespace
-				if o.GetName() == OdhConfigMapName || o.GetName() == SelfSignedConfigMapName || o.GetName() == ServiceCAConfigMapName {
-					// List all the notebooks in the namespace and trigger a reconcile event
-					var nbList nbv1.NotebookList
-					if err := r.List(ctx, &nbList, client.InNamespace(o.GetNamespace())); err != nil {
-						log.Error(err, "Unable to list Notebooks when attempting to handle Global CA Bundle event.")
-						return []reconcile.Request{}
-					}
-
-					// As there is only one configmap workbench-trusted-ca-bundle per namespace
-					// and is used by all the notebooks in the namespace, we can trigger
-					// reconcile event only for the first notebook in the list.
-					for _, nb := range nbList.Items {
-						return []reconcile.Request{
-							{
-								NamespacedName: types.NamespacedName{
-									Name:      nb.Name,
-									Namespace: o.GetNamespace(),
-								},
-							},
-						}
-					}
-				}
-
-				// If the ConfigMap is workbench-trusted-ca-bundle
-				// trigger a reconcile event for all the notebooks in the namespace
-				// containing the ConfigMap workbench-trusted-ca-bundle as a volume.
-				if o.GetName() == "workbench-trusted-ca-bundle" {
-					// List all the notebooks in the namespace and trigger a reconcile event
-					var nbList nbv1.NotebookList
-					if err := r.List(ctx, &nbList, client.InNamespace(o.GetNamespace())); err != nil {
-						log.Error(err, "Unable to list Notebook's when attempting to handle Global CA Bundle event.")
-						return []reconcile.Request{}
-					}
-
-					// For all the notebooks that mounted the ConfigMap workbench-trusted-ca-bundle
-					// as a volume, trigger a reconcile event.
-					reconcileRequests := []reconcile.Request{}
-					for _, nb := range nbList.Items {
-						for _, volume := range nb.Spec.Template.Spec.Volumes {
-							if volume.ConfigMap != nil && volume.ConfigMap.Name == o.GetName() {
-								namespacedName := types.NamespacedName{
-									Name:      nb.Name,
-									Namespace: o.GetNamespace(),
-								}
-								reconcileRequests = append(reconcileRequests, reconcile.Request{NamespacedName: namespacedName})
-							}
-						}
-					}
-					return reconcileRequests
 				}
 
 				return []reconcile.Request{}
