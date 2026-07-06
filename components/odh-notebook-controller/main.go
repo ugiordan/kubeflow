@@ -183,16 +183,22 @@ func main() {
 	restCfg := ctrl.GetConfigOrDie()
 	bootstrapClient, err := client.New(restCfg, client.Options{Scheme: scheme})
 	if err != nil {
-		setupLog.Error(err, "unable to create bootstrap client for TLS profile")
-		os.Exit(1)
-	}
-
-	if profile, err = tlspkg.FetchAPIServerTLSProfile(context.Background(), bootstrapClient); err != nil {
+		setupLog.Error(err, "unable to create bootstrap client for TLS profile, using hardened defaults")
+		tlsOpts = append(tlsOpts, func(c *tls.Config) {
+			c.MinVersion = tls.VersionTLS12
+			c.CipherSuites = intermediateCiphers
+			c.NextProtos = nextProtos
+		})
+	} else if profile, err = tlspkg.FetchAPIServerTLSProfile(context.Background(), bootstrapClient); err != nil {
 		switch {
 		case apimeta.IsNoMatchError(err):
 			setupLog.Info("TLS profile not available, using hardened defaults (non-OpenShift cluster)")
 		case k8serr.IsNotFound(err):
 			setupLog.Info("APIServer resource not found, using hardened defaults")
+		case k8serr.IsServiceUnavailable(err),
+			k8serr.IsTimeout(err),
+			k8serr.IsTooManyRequests(err):
+			setupLog.Info("Transient API error reading TLS profile, using hardened defaults", "error", err)
 		default:
 			setupLog.Error(err, "unable to read APIServer TLS profile, refusing to start with unknown TLS posture")
 			os.Exit(1)
