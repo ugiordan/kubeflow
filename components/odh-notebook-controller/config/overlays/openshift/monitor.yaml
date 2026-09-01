@@ -1,5 +1,5 @@
 apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
+kind: ServiceMonitor
 metadata:
   name: odh-notebook-controller-metrics-monitor
 spec:
@@ -7,7 +7,7 @@ spec:
     matchLabels:
       app: odh-notebook-controller
       kustomize.component: odh-notebook-controller
-  podMetricsEndpoints:
+  endpoints:
     - port: metrics
       scheme: https
       bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
